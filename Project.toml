@@ -1,0 +1,7 @@
+name = "Shark"
+uuid = "040c6d68-d5cf-4c16-a975-0ec1aac54b4c"
+authors = ["Joshua Robison"]
+version = "0.1.0"
+
+[deps]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
