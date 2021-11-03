@@ -1,2 +1,2 @@
 # Shark
- A console chess engine written with Julia
+A console chess engine written with Julia
