@@ -1,4 +1,3 @@
-# Shark: Test Chess Engine
 using Test
 using Shark
 
@@ -20,4 +19,14 @@ function perft(s::State, depth::Int)::Int
         nodes += perft(x, depth - 1)
     end
     return nodes;
+end
+
+@testset begin
+    s = State()
+    @test perft(s, 0) === 1
+    @test perft(s, 1) === 20
+    @test perft(s, 2) === 400
+    @test perft(s, 3) === 8902
+    @test perft(s, 4) === 197281
+    # @test perft(s, 5) === 4865609
 end

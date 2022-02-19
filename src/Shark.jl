@@ -1,4 +1,3 @@
-# Shark: Module Definition
 module Shark
 
 include("constants.jl")

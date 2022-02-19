@@ -3,7 +3,7 @@ export State
 export print_legal_moves
 export make_move, move_value
 
-struct State # Chess Game State
+struct State
     board::Array{UInt8, 1} # position
     turn::UInt8            # white | black
     wc::Tuple{Bool, Bool}  # white castle rights: kingside | queenside
@@ -13,27 +13,23 @@ struct State # Chess Game State
     mc::Int                # move counter
 end
 
-# Shark Constructor: Default Starting State
+# Default Starting State
 function State(board::String = BOARD)::State
     board = UInt8[piece(p) for p in board]
     return State(board, 1, (1, 1), (1, 1), 0, 0, 0);
 end
 
-# Shark Interfaces
 @inline Base.getindex(s::State, i::Int)::UInt8 = s.board[i];
 @inline Base.iterate(s::State, i::Int = 1) = i > 120 ? nothing : (s[i], i + 1);
 
-# Shark Display
 function Base.show(io::IO, s::State)::Nothing
-    println("\033[2J") # clear repl
-    println("\033[$(displaysize(stdout)[1])A")
-    # reduce board and get game state info
+    println(io, "\033[2J") # clear repl
+    println(io, "\033[$(displaysize(stdout)[1])A")
     board = copy(s.board[s.board .!= OFF])
     player = s.turn == WHITE ? "White" : "Black"
     castle_rights = "" * (s.wc[1] ? "K" : "-") * (s.wc[2] ? "Q" : "-")
     castle_rights *= (s.bc[1] ? "k" : "-") * (s.bc[2] ? "q" : "-")
     ep_square = s.ep == 0 ? "-" : s.ep
-    # print board state
     println(io, "  A B C D E F G H")
     for (i, j) in enumerate(1:8:64)
         rank = 8 - i + 1
@@ -48,7 +44,6 @@ function Base.show(io::IO, s::State)::Nothing
                 print(io, "$piece ")
             end
         end
-        # print game state information
         if     i == 1 println(io, " Turn:          $player        ")
         elseif i == 2 println(io, " Castle Rights: $castle_rights ")
         elseif i == 3 println(io, " Enpassant:     $ep_square     ")
