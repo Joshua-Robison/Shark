@@ -13,19 +13,17 @@ struct State
     mc::Int                # move counter
 end
 
-# Default Starting State
-function State(board::String = BOARD)::State
-    board = UInt8[piece(p) for p in board]
-    return State(board, 1, (1, 1), (1, 1), 0, 0, 0);
+function State(board::Vector{UInt8} = BOARD)
+    return State(board, WHITE, (true, true), (true, true), NONE, NONE, 0)
 end
 
-@inline Base.getindex(s::State, i::Int)::UInt8 = s.board[i];
+@inline Base.getindex(s::State, i::Int) = s.board[i];
 @inline Base.iterate(s::State, i::Int = 1) = i > 120 ? nothing : (s[i], i + 1);
 
-function Base.show(io::IO, s::State)::Nothing
+function Base.show(io::IO, s::State)
     println(io, "\033[2J") # clear repl
     println(io, "\033[$(displaysize(stdout)[1])A")
-    board = copy(s.board[s.board .!= OFF])
+    board = filter(x -> x ≠ OFF, s.board)
     player = s.turn == WHITE ? "White" : "Black"
     castle_rights = "" * (s.wc[1] ? "K" : "-") * (s.wc[2] ? "Q" : "-")
     castle_rights *= (s.bc[1] ? "k" : "-") * (s.bc[2] ? "q" : "-")
@@ -58,29 +56,27 @@ function Base.show(io::IO, s::State)::Nothing
     println(io, "  A B C D E F G H")
 end
 
-# Generate "Attacks" From Opponent
-function generate_attacks(s::State)::Channel
+function gen_attacks(s::State)
     xside = opposite(s.turn)
     sqₓ = (U, U+U, D, D+D)
     Channel() do attacks
-        for (i, p) in enumerate(s.board)
-            # not their piece
-            if color(p) != xside
-                continue;
+        for (i, p) in enumerate(s)
+            if color(p) ≠ xside
+                continue
             end
             type = class(p)
             for o in OFFSETS[p]
                 for j in Iterators.countfrom(i + o, o)
                     q = s[j] # destination
                     if q == OFF || color(q) == xside
-                        break; # offboard / own piece
+                        break # off board / own piece
                     end
                     if type == PAWN && o in sqₓ
-                        break; # ignore ↑ ↓ pawn moves
+                        break # ignore ↑ ↓ pawn moves
                     end
                     put!(attacks, j) # valid "threat"
-                    if type in (PAWN, KNIGHT, KING) || color(q) != xside
-                        break; # non-sliding piece or captured piece
+                    if type in (PAWN, KNIGHT, KING) || color(q) ≠ xside
+                        break # non-sliding piece or captured piece
                     end
                 end
             end
@@ -88,56 +84,53 @@ function generate_attacks(s::State)::Channel
     end
 end
 
-# Pseudo-Legal Move Generation
-function generate_moves(s::State)::Channel
-    # player and opponent
+function gen_moves(s::State)
     side, xside = s.turn, opposite(s.turn)
     # pawn conditions: enpassant, double move
     sqₓ = (s.ep, s.kp, s.kp + 1, s.kp - 1)
-    dₓ, α, β = side == WHITE ? (U, <, A2) : (D, >, H7)
+    f, dₓ, β = side == WHITE ? (<, U, A2) : (>, D, H7)
     # castling permission
     king, kₛ, qₛ, cr = side == WHITE ? (WK, H1, A1, s.wc) : (BK, H8, A8, s.bc)
     Channel() do moves
         for (i, p) in enumerate(s)
-            # not our piece
-            if color(p) != side
-                continue;
+            if color(p) ≠ side
+                continue
             end
             type = class(p)
             for o in OFFSETS[p]
                 for j in Iterators.countfrom(i + o, o)
                     q = s[j] # destination
                     if q == OFF || color(q) == side
-                        break; # offboard / own piece
+                        break # off board / own piece
                     end
                     if type == PAWN
-                        if o in (dₓ, dₓ+dₓ) && q != NONE
-                            break; # ↑ ↓ iff sq is empty
+                        if o in (dₓ, dₓ+dₓ) && q ≠ NONE
+                            break # ↑ ↓ iff sq is empty
                         end
-                        if o == (dₓ+dₓ) && (α(i,β) || s[i+dₓ] != NONE)
-                            break; # check moving ↑ ↓ two spaces
+                        if o == (dₓ+dₓ) && (f(i,β) || s[i+dₓ] ≠ NONE)
+                            break # check moving ↑ ↓ two spaces
                         end
                         if o in (dₓ+L, dₓ+R) && q == NONE && j ∉ sqₓ
-                            break; # ↖ ↘ ↗ ↙ attack check
+                            break # ↖ ↘ ↗ ↙ attack check
                         end
                         # store pawn move
                         put!(moves, (i, j))
-                        break;
+                        break
                     end
                     put!(moves, (i, j)) # store move
                     if type in (KNIGHT, KING) || color(q) == xside
-                        break; # non-sliding piece or captured piece
+                        break # non-sliding piece or captured piece
                     end
                     if i == kₛ && s[j+L] == king && cr[1]
                         # cannot kingside castle while or into check: E, F, G
-                        if any(m -> m in (kₛ-3, kₛ-2, kₛ-1), generate_attacks(s))
-                            break;
+                        if any(m -> m in (kₛ-3, kₛ-2, kₛ-1), gen_attacks(s))
+                            break
                         end
                         put!(moves, (j+L, j+R))
                     elseif i == qₛ && s[j+R] == king && cr[2]
                         # cannot queenside castle while or into check: E, D, C
-                        if any(m -> m in (qₛ+4, qₛ+3, qₛ+2), generate_attacks(s))
-                            break;
+                        if any(m -> m in (qₛ+4, qₛ+3, qₛ+2), gen_attacks(s))
+                            break
                         end
                         put!(moves, (j+R, j+L))
                     end
@@ -147,19 +140,17 @@ function generate_moves(s::State)::Channel
     end
 end
 
-# Print Pseudo-Legal Moves
-function print_moves(s::State)::Nothing
-    counter = 0 # move counter
-    for move in generate_moves(s)
+function print_moves(s::State)
+    counter = 0
+    for move in gen_moves(s)
         counter += 1
         from, to = move
         piece = PIECE[s[from]]
-        println("Move $counter: $piece $move")
+        println("Move $counter: $piece $from → $to")
     end
 end
 
-# Execute Pseudo-Legal Move
-function make_move(s::State, move::Tuple{Int, Int})::State
+function make_move(s::State, move::Tuple{Int, Int})
     i, j = move
     p, q = s[i], s[j]
     board = copy(s.board)
@@ -208,18 +199,17 @@ function make_move(s::State, move::Tuple{Int, Int})::State
     end
     mc = s.mc + 1           # increment move counter
     turn = opposite(s.turn) # switch turns
-    return State(board, turn, wc, bc, kp, ep, mc);
+    return State(board, turn, wc, bc, kp, ep, mc)
 end
 
-# Score Move: Heuristics
-function move_value(s::State, move::Tuple{Int, Int})::Int64
+function move_value(s::State, move::Tuple{Int, Int})
     i, j = move
     p, q = s[i], s[j]
     king, ks, qs, rook = s.turn == WHITE ? (WK, H1, A1, WR) : (BK, H8, A8, BR)
     # pts = new position - old position
     pts = POSITION[p][j] - POSITION[p][i]
     # add points for capturing piece
-    if q != NONE
+    if q ≠ NONE
         pts += POSITION[q][j]
     end
     # add points for castling: king
@@ -243,38 +233,34 @@ function move_value(s::State, move::Tuple{Int, Int})::Int64
             pts += POSITION[x][j-dₓ]
         end
     end
-    return pts;
+    return pts
 end
 
-# Filter Moves: Pseudo-Legal → Legal
-function generate_legal_moves(s::State)::Channel
+function gen_legal_moves(s::State)
     Channel() do legal_moves
         # determine player king
         piece = s.turn == WHITE ? WK : BK
-        for move in generate_moves(s)
+        for move in gen_moves(s)
             # make pseudo-legal move
             x = make_move(s, move)
             # find (updated) king position
             king = findfirst(x.board .== piece)
             if isnothing(king)
-                # illegal
-                continue;
+                continue
             end
-            if !any(m -> king in m, generate_moves(x))
-                # add legal move
+            if !any(m -> king in m, gen_moves(x))
                 put!(legal_moves, move)
             end
         end
     end
 end
 
-# Print Legal Moves
-function print_legal_moves(s::State)::Nothing
-    counter = 0 # move counter
-    for move in generate_legal_moves(s)
+function print_legal_moves(s::State)
+    counter = 0
+    for move in gen_legal_moves(s)
         counter += 1
         from, to = move
         piece = PIECE[s[from]]
-        println("Move $counter: $piece $move")
+        println("Move $counter: $piece $from → $to")
     end
 end
